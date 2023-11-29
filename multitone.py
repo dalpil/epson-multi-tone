@@ -3,16 +3,193 @@ import socket
 import sys
 
 import numpy as np
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageEnhance
 
-c = socket.create_connection((sys.argv[1], 9100))
 
-c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
-c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
+DITHER_KERNELS = {
+    'atkinson': (
+        (1, 0, 1 / 8),
+        (2, 0, 1 / 8),
+        (-1, 1, 1 / 8),
+        (0, 1, 1 / 8),
+        (1, 1, 1 / 8),
+        (0, 2, 1 / 8),
+    ),
+
+    'floyd-steinberg': (
+        (1, 0, 7 / 16),
+        (-1, 1, 3 / 16),
+        (0, 1, 5 / 16),
+        (1, 1, 1 / 16),
+    ),
+
+    'jarvis-judice-ninke': (
+        (1, 0, 7 / 48),
+        (2, 0, 5 / 48),
+        (-2, 1, 3 / 48),
+        (-1, 1, 5 / 48),
+        (0, 1, 7 / 48),
+        (1, 1, 5 / 48),
+        (2, 1, 3 / 48),
+        (-2, 2, 1 / 48),
+        (-1, 2, 3 / 48),
+        (0, 2, 5 / 48),
+        (1, 2, 3 / 48),
+        (2, 2, 1 / 48),
+    ),
+
+    'stucki': (
+        (1, 0, 8 / 42),
+        (2, 0, 4 / 42),
+        (-2, 1, 2 / 42),
+        (-1, 1, 4 / 42),
+        (0, 1, 8 / 42),
+        (1, 1, 4 / 42),
+        (2, 1, 2 / 42),
+        (-2, 2, 1 / 42),
+        (-1, 2, 2 / 42),
+        (0, 2, 4 / 42),
+        (1, 2, 2 / 42),
+        (2, 2, 1 / 42),
+    ),
+
+    'burkes': (
+        (1, 0, 8 / 32),
+        (2, 0, 4 / 32),
+        (-2, 1, 2 / 32),
+        (-1, 1, 4 / 32),
+        (0, 1, 8 / 32),
+        (1, 1, 4 / 32),
+        (2, 1, 2 / 32),
+    ),
+
+    'sierra3': (
+        (1, 0, 5 / 32),
+        (2, 0, 3 / 32),
+        (-2, 1, 2 / 32),
+        (-1, 1, 4 / 32),
+        (0, 1, 5 / 32),
+        (1, 1, 4 / 32),
+        (2, 1, 2 / 32),
+        (-1, 2, 2 / 32),
+        (0, 2, 3 / 32),
+        (1, 2, 2 / 32),
+    ),
+
+    'sierra2': (
+        (1, 0, 4 / 16),
+        (2, 0, 3 / 16),
+        (-2, 1, 1 / 16),
+        (-1, 1, 2 / 16),
+        (0, 1, 3 / 16),
+        (1, 1, 2 / 16),
+        (2, 1, 1 / 16),
+    ),
+
+    'sierra-lite': (
+        (1, 0, 2 / 4),
+        (-1, 1, 1 / 4),
+        (0, 1, 1 / 4),
+    ),
+
+    # https://doi.org/10.1117/12.271597
+    'wong-allebach': (
+        (1, 0, 0.2911),
+
+        (-1, 1, 0.1373),
+        (0, 1, 0.3457),
+        (1, 1, 0.2258)
+    ),
+
+    # https://doi.org/10.1117/12.2180540
+    'fedoseev': (
+        (1, 0, 0.5423),
+        (2, 0, 0.0533),
+
+        (-2, 1, 0.0246),
+        (-1, 1, 0.2191),
+        (0, 1, 0.4715),
+        (1, 1, -0.0023),
+        (2, 1, -0.1241),
+
+        (-2, 2, -0.0065),
+        (-1, 2, -0.0692),
+        (0, 2, 0.0168),
+        (1, 2, -0.0952),
+        (2, 2, -0.0304),
+    ),
+
+    'fedoseev2': (
+        (1, 0, 0.4364),
+        (0, 1, 0.5636),
+    ),
+
+    'fedoseev3': (
+        (1, 0, 0.4473),
+        (-1, 1, 0.1654),
+        (0, 1, 0.3872),
+    ),
+
+    'fedoseev4': (
+        (1, 0, 0.5221),
+        (-1, 1, 0.1854),
+        (0, 1, 0.4689),
+        (1, 2, -0.1763),
+    ),
+}
+
+palette = [0, 63, 127, 190, 255]
+lut =     [0, 7, 9, 11, 15]
+
+palette = [0, 42, 84, 126, 168, 210, 255]
+lut =     [0, 5,  6,  7,   9,   11,  15]
+
+
+def dither(original, diff_map, serpentine, k=0.0):
+    input = original.copy()
+    output = np.zeros_like(input)
+
+    direction = 1
+    height, width = input.shape
+
+    for y in range(height):
+        for x in range(0, width, direction) if direction > 0 else range(width - 1, -1, direction):
+            old_pixel = input[y, x]
+            # new_pixel = 0 if old_pixel + (k * (original[y, x] - 127)) <= 127 + noise_multiplier * np.random.uniform(-127, 127) else 255
+
+            # new_pixel = min(palette, key=lambda x:abs(x - max(0, min(255, (old_pixel + (k * (original[y, x] - 127)))))))
+            new_pixel = min(palette, key=lambda x:abs(x - old_pixel))
+
+            quantization_error = old_pixel - new_pixel
+            output[y, x] = new_pixel
+
+            for dx, dy, diffusion_coefficient in diff_map:
+                # Reverse the kernel if we are going right to left
+                if direction < 0:
+                    dx *= -1
+
+                xn, yn = x + dx, y + dy
+
+                if (0 <= xn < width) and (0 <= yn < height):
+                    # Some kernels use negative coefficients, so we cannot clamp this value between 0.0-1.0
+                    input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
+
+            if serpentine and ((direction > 0 and x >= (width - 1)) or (direction < 0 and x <= 0)):
+                direction *= -1
+
+    return output
+
+
+# c = socket.create_connection((sys.argv[1], 9100))
+
+# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
+# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
 
 image = Image.open(sys.argv[2])
 image = image.convert('L')
-image = ImageOps.invert(image)
+image = ImageEnhance.Sharpness(image)
+image = image.enhance(4.0)
+# image = ImageOps.invert(image)
 
 
 if image.width > 512:
@@ -22,7 +199,13 @@ if image.width > 512:
 width = image.width
 height = image.height
 
-print(width, height)
+image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, k=1.0)
+# breakpoint()
+image = Image.fromarray(np.uint8(image), "L")
+hist = image.histogram()
+print("Num colors:", len(list(filter(None, hist))))
+image.save('output.png')
+# breakpoint()
 
 image = bytes([p // 17 for p in image.tobytes()])
 
@@ -55,9 +238,9 @@ image = bytes([p // 17 for p in image.tobytes()])
 
 
 # A gradient from level 0 to level 15
-width = 512
-height = 100
-image = bytes(list(chain.from_iterable([x] * 31 + [0] for x in range(16))) * height)
+# width = 512
+# height = 100
+# image = bytes(list(chain.from_iterable([x] * 31 + [0] for x in range(16))) * height)
 
 colors = [
     [0x00] * 64 * height,
@@ -134,9 +317,9 @@ for index, color_code in enumerate(range(49, 53)):
         (height >> 0) & 0xff, (height >> 8) & 0xff,
     ]) + bytes(colors[index])
 
-    c.sendall(data)
+#     c.sendall(data)
 
-c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
-c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
+# c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
+# c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
 
-c.close()
+# c.close()
