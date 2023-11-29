@@ -142,7 +142,7 @@ palette = [0, 63, 127, 190, 255]
 lut =     [0, 7, 9, 11, 15]
 
 palette = [0, 42, 84, 126, 168, 210, 255]
-lut =     [0, 5,  6,  7,   9,   11,  15]
+lut =     [0, 6,  7,  8,   10,   11,  15]
 
 
 def dither(original, diff_map, serpentine, k=0.0):
@@ -180,21 +180,23 @@ def dither(original, diff_map, serpentine, k=0.0):
     return output
 
 
-# c = socket.create_connection((sys.argv[1], 9100))
-
-# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
-# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
 
 image = Image.open(sys.argv[2])
-image = image.convert('L')
-image = ImageEnhance.Sharpness(image)
-image = image.enhance(4.0)
-# image = ImageOps.invert(image)
-
 
 if image.width > 512:
     ratio = 512 / image.width
     image = image.resize((int(image.width * ratio), int(image.height * ratio)))
+
+image = image.convert('L')
+image = ImageEnhance.Sharpness(image)
+image = image.enhance(3.0)
+
+# image = ImageOps.invert(image)
+
+# pixels = np.array(image, dtype=np.float64)
+# pixels /= 255.0
+# pixels = np.where(pixels <= 0.04045, pixels/12.92, ((pixels+0.055)/1.055)**2.4)
+# image = Image.fromarray(np.uint8(pixels * 255.0), 'L')
 
 width = image.width
 height = image.height
@@ -205,30 +207,41 @@ image = Image.fromarray(np.uint8(image), "L")
 hist = image.histogram()
 print("Num colors:", len(list(filter(None, hist))))
 image.save('output.png')
+image = ImageOps.invert(image)
 # breakpoint()
+
+image = Image.open(sys.argv[2])
+image = ImageOps.invert(image)
+image = ImageOps.flip(image)
+image = ImageOps.mirror(image)
 
 image = bytes([p // 17 for p in image.tobytes()])
 
-# lut = [
-#     4,  # 0
-#     4,  # 1
-#     4,  # 2
-#     4,  # 3
-#     4,  # 4
-#     5,  # 5
-#     6,  # 6
-#     7,  # 7
-#     8,  # 8
-#     10, # 9
-#     10, # 10
-#     12, # 11
-#     12, # 12
-#     13, # 13
-#     15, # 14
-#     15, # 15
-# ]
+lut =     [0, 6,  7,  8,   10,   11,  15]
 
-# image = [lut[x] for x in image]
+lut = [
+    0,  # 0
+    5,  # 1
+    6,  # 2
+    6,  # 3
+    6,  # 4
+    7,  # 5
+    7,  # 6
+    8,  # 7
+    8,  # 8
+    9, # 9
+    10, # 10
+    11, # 11
+    12, # 12
+    13, # 13
+    14, # 14
+    15, # 15
+]
+
+{0, 2, 5, 7, 10, 12, 15}
+
+# breakpoint()
+image = [lut[x] for x in image]
 
 
 # image = np.array(image)
@@ -296,6 +309,10 @@ colors = [color0, color1, color2, color3]
 for i in range(4):
     print(colors[i][:64])
 
+c = socket.create_connection((sys.argv[1], 9100))
+
+c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
+c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
 
 for index, color_code in enumerate(range(49, 53)):
     data = bytes([
@@ -317,9 +334,9 @@ for index, color_code in enumerate(range(49, 53)):
         (height >> 0) & 0xff, (height >> 8) & 0xff,
     ]) + bytes(colors[index])
 
-#     c.sendall(data)
+    c.sendall(data)
 
-# c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
-# c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
+c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
+c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
 
-# c.close()
+c.close()
