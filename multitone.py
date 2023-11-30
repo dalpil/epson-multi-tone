@@ -5,6 +5,9 @@ import sys
 import numpy as np
 from PIL import Image, ImageOps, ImageEnhance
 
+from colorama import init as colorama_init
+from colorama import Fore, Style
+
 
 DITHER_KERNELS = {
     'atkinson': (
@@ -141,8 +144,12 @@ DITHER_KERNELS = {
 palette = [0, 63, 127, 190, 255]
 lut =     [0, 7, 9, 11, 15]
 
+# 7 colors
 palette = [0, 42, 84, 126, 168, 210, 255]
 lut =     [0, 6,  7,  8,   10,   11,  15]
+
+# 8 colors
+palette = [0, 36, 72, 109, 145, 182, 218, 255]
 
 
 def dither(original, diff_map, serpentine, k=0.0):
@@ -180,7 +187,6 @@ def dither(original, diff_map, serpentine, k=0.0):
     return output
 
 
-
 image = Image.open(sys.argv[2])
 
 if image.width > 512:
@@ -210,10 +216,10 @@ image.save('output.png')
 image = ImageOps.invert(image)
 # breakpoint()
 
-image = Image.open(sys.argv[2])
-image = ImageOps.invert(image)
-image = ImageOps.flip(image)
-image = ImageOps.mirror(image)
+# image = Image.open(sys.argv[2])
+# image = ImageOps.invert(image)
+# image = ImageOps.flip(image)
+# image = ImageOps.mirror(image)
 
 image = bytes([p // 17 for p in image.tobytes()])
 
@@ -269,23 +275,11 @@ color2 = [0x00] * 64 * height
 color3 = [0x00] * 64 * height
 
 for index, pixel in enumerate(image):
-    x = index % width
-    y = index // width
-
     if not pixel:
         continue
 
-    if pixel & 0b1000:
-        plane = 0
-
-    if pixel & 0b0100:
-        plane = 1
-
-    if pixel & 0b0010:
-        plane = 2
-
-    if pixel & 0b0001:
-        plane = 3
+    x = index % width
+    y = index // width
 
     if pixel & 0b1000:
         color0[64 * y + x // 8] |= 1 << (7 - index % 8)
@@ -309,34 +303,50 @@ colors = [color0, color1, color2, color3]
 for i in range(4):
     print(colors[i][:64])
 
-c = socket.create_connection((sys.argv[1], 9100))
+# c = socket.create_connection((sys.argv[1], 9100))
 
-c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
-c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
+# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
+# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
 
-for index, color_code in enumerate(range(49, 53)):
-    data = bytes([
-        0x1d, 0x38, 0x4c,
+def chunks(lst, n):
+    for i in range(0, len(lst), n):
+        yield lst[i:i + n]
 
-        (10 + len(colors[index]) >> 0)  & 0xff,
-        (10 + len(colors[index]) >> 8)  & 0xff,
-        (10 + len(colors[index]) >> 16) & 0xff,
-        (10 + len(colors[index]) >> 24) & 0xff,
 
-        0x30, 0x70,
+previous_chunk = 0
+# for chunk in range(415 * 64, 64 * height, 415 * 64):
+chunk_size = 415
+chunk_size = 256
+for chunk in range(0, 64 * height, 64 * chunk_size):
+    print(chunk // 64, min(height, (chunk + 64 * chunk_size) // 64))
+    for index, color_code in enumerate(range(49, 53)):
+        chunk_height = len(colors[index][chunk:chunk + 64 * chunk_size]) // 64
+        data = bytes([
+            0x1d, 0x38, 0x4c,
 
-        52, # Multi-tone
-        1, 1, # No scaling
+            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 0)  & 0xff,
+            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 8)  & 0xff,
+            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 16) & 0xff,
+            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 24) & 0xff,
 
-        color_code,
+            0x30, 0x70,
 
-        (width >> 0) & 0xff, (width >> 8) & 0xff,
-        (height >> 0) & 0xff, (height >> 8) & 0xff,
-    ]) + bytes(colors[index])
+            52, # Multi-tone
+            1, 1, # No scaling
 
-    c.sendall(data)
+            color_code,
 
-c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
-c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
+            (width >> 0) & 0xff, (width >> 8) & 0xff,
+            (chunk_height >> 0) & 0xff, (chunk_height >> 8) & 0xff,
+        ]) + bytes(colors[index][chunk:chunk + 64 * chunk_size])
 
-c.close()
+        logline = ' '.join('{:02x}'.format(x) for x in data[:24])
+        print('d: ', logline[:50], Style.DIM, end='', sep='')
+        print(logline[50:], Style.RESET_ALL)
+        # c.sendall(data)
+
+    # c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
+
+# c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
+
+# c.close()
