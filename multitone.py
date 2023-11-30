@@ -179,7 +179,8 @@ def dither(original, diff_map, serpentine, k=0.0):
 
                 if (0 <= xn < width) and (0 <= yn < height):
                     # Some kernels use negative coefficients, so we cannot clamp this value between 0.0-1.0
-                    input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
+                    # input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
+                    input[yn, xn] = max(0, min(255, input[yn, xn] + int(quantization_error * diffusion_coefficient)))
 
             if serpentine and ((direction > 0 and x >= (width - 1)) or (direction < 0 and x <= 0)):
                 direction *= -1
@@ -195,7 +196,7 @@ if image.width > 512:
 
 image = image.convert('L')
 image = ImageEnhance.Sharpness(image)
-image = image.enhance(3.0)
+image = image.enhance(4.0)
 
 # image = ImageOps.invert(image)
 
@@ -226,11 +227,11 @@ image = bytes([p // 17 for p in image.tobytes()])
 lut =     [0, 6,  7,  8,   10,   11,  15]
 
 lut = [
-    0,  # 0
+    4,  # 0
     5,  # 1
     6,  # 2
     6,  # 3
-    6,  # 4
+    7,  # 4
     7,  # 5
     7,  # 6
     8,  # 7
@@ -303,10 +304,10 @@ colors = [color0, color1, color2, color3]
 for i in range(4):
     print(colors[i][:64])
 
-# c = socket.create_connection((sys.argv[1], 9100))
+c = socket.create_connection((sys.argv[1], 9100))
 
-# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
-# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
+c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
+c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
 
 def chunks(lst, n):
     for i in range(0, len(lst), n):
@@ -317,6 +318,7 @@ previous_chunk = 0
 # for chunk in range(415 * 64, 64 * height, 415 * 64):
 chunk_size = 415
 chunk_size = 256
+chunk_size = 100
 for chunk in range(0, 64 * height, 64 * chunk_size):
     print(chunk // 64, min(height, (chunk + 64 * chunk_size) // 64))
     for index, color_code in enumerate(range(49, 53)):
@@ -343,10 +345,10 @@ for chunk in range(0, 64 * height, 64 * chunk_size):
         logline = ' '.join('{:02x}'.format(x) for x in data[:24])
         print('d: ', logline[:50], Style.DIM, end='', sep='')
         print(logline[50:], Style.RESET_ALL)
-        # c.sendall(data)
+        c.sendall(data)
 
-    # c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
+    c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
 
-# c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
+c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
 
-# c.close()
+c.close()
