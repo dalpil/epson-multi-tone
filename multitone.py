@@ -161,7 +161,7 @@ lut = [
     14, # 14
     15, # 15
 ]
-    
+
 @numba.njit
 def dither(original, diff_map, serpentine, palette):
     input = original.copy()
@@ -210,98 +210,54 @@ def dither(original, diff_map, serpentine, palette):
 @click.argument('image', type=click.File(mode='rb'))
 def main(image, output_file, output_image, num_lines, sharpen):
     image = Image.open(image)
-    
+
     if image.width > 512:
         ratio = 512 / image.width
         image = image.resize((int(image.width * ratio), int(image.height * ratio)))
-    
+
     image = image.convert('L')
     image = ImageEnhance.Sharpness(image)
     image = image.enhance(sharpen)
-    
+
     width = image.width
     height = image.height
 
     numba_palette = numba.typed.List()
     for x in palette:
         numba_palette.append(x)
-    
+
     image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, numba_palette)
     image = Image.fromarray(np.uint8(image), "L")
 
     if output_image:
         image.save(output_image)
-    
+
     image = ImageOps.invert(image)
-    
     image = bytes([p // 17 for p in image.tobytes()])
-    
     image = [lut[x] for x in image]
 
-    color0 = [0x00] * 64 * height
-    color1 = [0x00] * 64 * height
-    color2 = [0x00] * 64 * height
-    color3 = [0x00] * 64 * height
-
-    for index, pixel in enumerate(image):
-        if not pixel:
-            continue
-
-        x = index % width
-        y = index // width
-
-        if pixel & 0b1000:
-            color0[64 * y + x // 8] |= 1 << (7 - index % 8)
-
-        if pixel & 0b0100:
-            color1[64 * y + x // 8] |= 1 << (7 - index % 8)
-
-        if pixel & 0b0010:
-            color2[64 * y + x // 8] |= 1 << (7 - index % 8)
-
-        if pixel & 0b0001:
-            color3[64 * y + x // 8] |= 1 << (7 - index % 8)
-
-
-    colors = [color0, color1, color2, color3]
 
     output = b''
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1]) # Single head energizing
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1]) # Lowest speed
 
-    chunk_size = num_lines
-
-    for chunk_num, chunk in enumerate(range(0, 64 * height, 64 * chunk_size)):
-        bitplanes = []
-
+    for chunk_num, chunk in enumerate(range(0, 64 * height, 64 * num_lines)):
         for color_index, color_code in enumerate(range(49, 53)):
-            bitplane = [0x00] * 64 * chunk_size
+            bitplane = [0x00] * 64 * num_lines
+            image_offset = chunk_num * (width * num_lines)
 
-            image_offset = chunk_num * width * chunk_size
-            # print(image_offset, image_offset + width * chunk_size)
-            previous = 0
-            for index, pixel in enumerate(image[image_offset:image_offset + width * chunk_size]):
-                index = image_offset + index
-            # for index, pixel in enumerate(image[chunk:chunk + 64 * chunk_size]):
-                if index // width != previous:
-                    print(index // width)
-                    previous = index // width
+            for index, pixel in enumerate(image[image_offset:image_offset + width * num_lines]):
+                if pixel & (0b1000 >> color_index):
+                    bitplane[64 * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
 
-                if not pixel:
-                    continue
-
-                # if pixel & (0b1000 >> color_index):
-                #     bitplane[64 * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
-
-            bitplanes.append(bitplane)
-
+            assert(width * num_lines // 8 == len(bitplane))
             data = bytes([
                 0x1d, 0x38, 0x4c,
 
-                (10 + len(bitplanes[color_index]) >> 0)  & 0xff,
-                (10 + len(bitplanes[color_index]) >> 8)  & 0xff,
-                (10 + len(bitplanes[color_index]) >> 16) & 0xff,
-                (10 + len(bitplanes[color_index]) >> 24) & 0xff,
+                (10 + len(bitplane) >> 0)  & 0xff,
+                (10 + len(bitplane) >> 8)  & 0xff,
+                (10 + len(bitplane) >> 16) & 0xff,
+                (10 + len(bitplane) >> 24) & 0xff,
 
                 0x30, 0x70,
 
@@ -311,41 +267,12 @@ def main(image, output_file, output_image, num_lines, sharpen):
                 color_code,
 
                 (width >> 0) & 0xff, (width >> 8) & 0xff,
-                (chunk*8 >> 0) & 0xff, (chunk*8 >> 8) & 0xff,
-            ]) + bytes(bitplanes[color_index])
+                (num_lines >> 0) & 0xff, (num_lines >> 8) & 0xff,
+            ]) + bytes(bitplane)
 
             output += data
 
         output += bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2]) # Print stored data
-
-
-    print(color0[:64])
-
-    # for chunk in range(0, 64 * height, 64 * chunk_size):
-    #     for index, color_code in enumerate(range(49, 53)):
-    #         chunk_height = len(colors[index][chunk:chunk + 64 * chunk_size]) // 64
-    #         data = bytes([
-    #             0x1d, 0x38, 0x4c,
-
-    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 0)  & 0xff,
-    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 8)  & 0xff,
-    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 16) & 0xff,
-    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 24) & 0xff,
-
-    #             0x30, 0x70,
-
-    #             52, # Multi-tone
-    #             1, 1, # No scaling
-
-    #             color_code,
-
-    #             (width >> 0) & 0xff, (width >> 8) & 0xff,
-    #             (chunk_height >> 0) & 0xff, (chunk_height >> 8) & 0xff,
-    #         ]) + bytes(colors[index][chunk:chunk + 64 * chunk_size])
-
-    #         output += data
-
-    #     output += bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2]) # Print stored data
 
     output += bytes([0x1d, 0x56, 65, 0]) # Feed and cut
 
