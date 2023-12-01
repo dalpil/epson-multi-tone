@@ -10,6 +10,7 @@ python = "^3.10"
 Pillow = "^10.1.0"
 numpy = "^1.26.2"
 colorama = "^0.4.6"
+numba = "^0.58.1"
 
 
 [build-system]

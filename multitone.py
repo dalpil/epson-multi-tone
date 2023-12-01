@@ -3,6 +3,7 @@ import socket
 import sys
 
 import numpy as np
+import numba
 from PIL import Image, ImageOps, ImageEnhance
 
 from colorama import init as colorama_init
@@ -151,8 +152,8 @@ lut =     [0, 6,  7,  8,   10,   11,  15]
 # 8 colors
 palette = [0, 36, 72, 109, 145, 182, 218, 255]
 
-
-def dither(original, diff_map, serpentine, k=0.0):
+@numba.njit
+def dither(original, diff_map, serpentine, palette):
     input = original.copy()
     output = np.zeros_like(input)
 
@@ -165,7 +166,16 @@ def dither(original, diff_map, serpentine, k=0.0):
             # new_pixel = 0 if old_pixel + (k * (original[y, x] - 127)) <= 127 + noise_multiplier * np.random.uniform(-127, 127) else 255
 
             # new_pixel = min(palette, key=lambda x:abs(x - max(0, min(255, (old_pixel + (k * (original[y, x] - 127)))))))
-            new_pixel = min(palette, key=lambda x:abs(x - old_pixel))
+            # new_pixel = min(palette, key=lambda x: abs(x - old_pixel))
+
+            old_distance = 255
+            new_pixel = 0
+            for each in palette:
+                distance = abs(each - old_pixel)
+
+                if distance < old_distance:
+                    old_distance = distance
+                    new_pixel = each
 
             quantization_error = old_pixel - new_pixel
             output[y, x] = new_pixel
@@ -180,7 +190,7 @@ def dither(original, diff_map, serpentine, k=0.0):
                 if (0 <= xn < width) and (0 <= yn < height):
                     # Some kernels use negative coefficients, so we cannot clamp this value between 0.0-1.0
                     # input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
-                    input[yn, xn] = max(0, min(255, input[yn, xn] + int(quantization_error * diffusion_coefficient)))
+                    input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
 
             if serpentine and ((direction > 0 and x >= (width - 1)) or (direction < 0 and x <= 0)):
                 direction *= -1
@@ -208,7 +218,7 @@ image = image.enhance(4.0)
 width = image.width
 height = image.height
 
-image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, k=1.0)
+image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, palette)
 # breakpoint()
 image = Image.fromarray(np.uint8(image), "L")
 hist = image.histogram()
@@ -304,10 +314,10 @@ colors = [color0, color1, color2, color3]
 for i in range(4):
     print(colors[i][:64])
 
-c = socket.create_connection((sys.argv[1], 9100))
+# c = socket.create_connection((sys.argv[1], 9100))
 
-c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
-c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
+# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
+# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
 
 def chunks(lst, n):
     for i in range(0, len(lst), n):
@@ -345,10 +355,10 @@ for chunk in range(0, 64 * height, 64 * chunk_size):
         logline = ' '.join('{:02x}'.format(x) for x in data[:24])
         print('d: ', logline[:50], Style.DIM, end='', sep='')
         print(logline[50:], Style.RESET_ALL)
-        c.sendall(data)
+#         c.sendall(data)
 
-    c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
+#     c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
 
-c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
+# c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
 
-c.close()
+# c.close()
