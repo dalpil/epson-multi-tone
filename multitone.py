@@ -1,14 +1,13 @@
-from itertools import chain
-import socket
-import sys
+import logging
 
+import click
 import numpy as np
 import numba
 from PIL import Image, ImageOps, ImageEnhance
 
-from colorama import init as colorama_init
-from colorama import Fore, Style
 
+logging.basicConfig(level=logging.WARNING)
+logging.getLogger('PIL').setLevel(logging.WARNING)
 
 DITHER_KERNELS = {
     'atkinson': (
@@ -142,16 +141,27 @@ DITHER_KERNELS = {
     ),
 }
 
-palette = [0, 63, 127, 190, 255]
-lut =     [0, 7, 9, 11, 15]
-
-# 7 colors
-palette = [0, 42, 84, 126, 168, 210, 255]
-lut =     [0, 6,  7,  8,   10,   11,  15]
-
-# 8 colors
 palette = [0, 36, 72, 109, 145, 182, 218, 255]
 
+lut = [
+    4,  # 0
+    5,  # 1
+    6,  # 2
+    6,  # 3
+    7,  # 4
+    7,  # 5
+    7,  # 6
+    8,  # 7
+    8,  # 8
+    9, # 9
+    10, # 10
+    11, # 11
+    12, # 12
+    13, # 13
+    14, # 14
+    15, # 15
+]
+    
 @numba.njit
 def dither(original, diff_map, serpentine, palette):
     input = original.copy()
@@ -163,10 +173,6 @@ def dither(original, diff_map, serpentine, palette):
     for y in range(height):
         for x in range(0, width, direction) if direction > 0 else range(width - 1, -1, direction):
             old_pixel = input[y, x]
-            # new_pixel = 0 if old_pixel + (k * (original[y, x] - 127)) <= 127 + noise_multiplier * np.random.uniform(-127, 127) else 255
-
-            # new_pixel = min(palette, key=lambda x:abs(x - max(0, min(255, (old_pixel + (k * (original[y, x] - 127)))))))
-            # new_pixel = min(palette, key=lambda x: abs(x - old_pixel))
 
             old_distance = 255
             new_pixel = 0
@@ -188,8 +194,6 @@ def dither(original, diff_map, serpentine, palette):
                 xn, yn = x + dx, y + dy
 
                 if (0 <= xn < width) and (0 <= yn < height):
-                    # Some kernels use negative coefficients, so we cannot clamp this value between 0.0-1.0
-                    # input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
                     input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
 
             if serpentine and ((direction > 0 and x >= (width - 1)) or (direction < 0 and x <= 0)):
@@ -198,167 +202,158 @@ def dither(original, diff_map, serpentine, palette):
     return output
 
 
-image = Image.open(sys.argv[2])
+@click.command()
+@click.option('--output-file', type=click.Path(), required=True, help="The binary file to send to the Epson printer")
+@click.option('--output-image', type=click.Path())
+@click.option('--num-lines', default=100, help='Should be less than half of 415')
+@click.option('--sharpen', default=4.0)
+@click.argument('image', type=click.File(mode='rb'))
+def main(image, output_file, output_image, num_lines, sharpen):
+    image = Image.open(image)
+    
+    if image.width > 512:
+        ratio = 512 / image.width
+        image = image.resize((int(image.width * ratio), int(image.height * ratio)))
+    
+    image = image.convert('L')
+    image = ImageEnhance.Sharpness(image)
+    image = image.enhance(sharpen)
+    
+    width = image.width
+    height = image.height
 
-if image.width > 512:
-    ratio = 512 / image.width
-    image = image.resize((int(image.width * ratio), int(image.height * ratio)))
+    numba_palette = numba.typed.List()
+    for x in palette:
+        numba_palette.append(x)
+    
+    image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, numba_palette)
+    image = Image.fromarray(np.uint8(image), "L")
 
-image = image.convert('L')
-image = ImageEnhance.Sharpness(image)
-image = image.enhance(4.0)
+    if output_image:
+        image.save(output_image)
+    
+    image = ImageOps.invert(image)
+    
+    image = bytes([p // 17 for p in image.tobytes()])
+    
+    image = [lut[x] for x in image]
 
-# image = ImageOps.invert(image)
+    color0 = [0x00] * 64 * height
+    color1 = [0x00] * 64 * height
+    color2 = [0x00] * 64 * height
+    color3 = [0x00] * 64 * height
 
-# pixels = np.array(image, dtype=np.float64)
-# pixels /= 255.0
-# pixels = np.where(pixels <= 0.04045, pixels/12.92, ((pixels+0.055)/1.055)**2.4)
-# image = Image.fromarray(np.uint8(pixels * 255.0), 'L')
+    for index, pixel in enumerate(image):
+        if not pixel:
+            continue
 
-width = image.width
-height = image.height
+        x = index % width
+        y = index // width
 
-image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, palette)
-# breakpoint()
-image = Image.fromarray(np.uint8(image), "L")
-hist = image.histogram()
-print("Num colors:", len(list(filter(None, hist))))
-image.save('output.png')
-image = ImageOps.invert(image)
-# breakpoint()
+        if pixel & 0b1000:
+            color0[64 * y + x // 8] |= 1 << (7 - index % 8)
 
-# image = Image.open(sys.argv[2])
-# image = ImageOps.invert(image)
-# image = ImageOps.flip(image)
-# image = ImageOps.mirror(image)
+        if pixel & 0b0100:
+            color1[64 * y + x // 8] |= 1 << (7 - index % 8)
 
-image = bytes([p // 17 for p in image.tobytes()])
+        if pixel & 0b0010:
+            color2[64 * y + x // 8] |= 1 << (7 - index % 8)
 
-lut =     [0, 6,  7,  8,   10,   11,  15]
-
-lut = [
-    4,  # 0
-    5,  # 1
-    6,  # 2
-    6,  # 3
-    7,  # 4
-    7,  # 5
-    7,  # 6
-    8,  # 7
-    8,  # 8
-    9, # 9
-    10, # 10
-    11, # 11
-    12, # 12
-    13, # 13
-    14, # 14
-    15, # 15
-]
-
-{0, 2, 5, 7, 10, 12, 15}
-
-# breakpoint()
-image = [lut[x] for x in image]
+        if pixel & 0b0001:
+            color3[64 * y + x // 8] |= 1 << (7 - index % 8)
 
 
-# image = np.array(image)
-# image //= 17
-# image = np.interp(image, (0, 15), (4, 15))
-# image = [round(x) for x in image.flatten().tolist()]
+    colors = [color0, color1, color2, color3]
+
+    output = b''
+    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1]) # Single head energizing
+    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1]) # Lowest speed
+
+    chunk_size = num_lines
+
+    for chunk_num, chunk in enumerate(range(0, 64 * height, 64 * chunk_size)):
+        bitplanes = []
+
+        for color_index, color_code in enumerate(range(49, 53)):
+            bitplane = [0x00] * 64 * chunk_size
+
+            image_offset = chunk_num * width * chunk_size
+            # print(image_offset, image_offset + width * chunk_size)
+            previous = 0
+            for index, pixel in enumerate(image[image_offset:image_offset + width * chunk_size]):
+                index = image_offset + index
+            # for index, pixel in enumerate(image[chunk:chunk + 64 * chunk_size]):
+                if index // width != previous:
+                    print(index // width)
+                    previous = index // width
+
+                if not pixel:
+                    continue
+
+                # if pixel & (0b1000 >> color_index):
+                #     bitplane[64 * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
+
+            bitplanes.append(bitplane)
+
+            data = bytes([
+                0x1d, 0x38, 0x4c,
+
+                (10 + len(bitplanes[color_index]) >> 0)  & 0xff,
+                (10 + len(bitplanes[color_index]) >> 8)  & 0xff,
+                (10 + len(bitplanes[color_index]) >> 16) & 0xff,
+                (10 + len(bitplanes[color_index]) >> 24) & 0xff,
+
+                0x30, 0x70,
+
+                52, # Multi-tone
+                1, 1, # No scaling
+
+                color_code,
+
+                (width >> 0) & 0xff, (width >> 8) & 0xff,
+                (chunk*8 >> 0) & 0xff, (chunk*8 >> 8) & 0xff,
+            ]) + bytes(bitplanes[color_index])
+
+            output += data
+
+        output += bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2]) # Print stored data
 
 
-# A gradient from level 0 to level 15
-# width = 512
-# height = 100
-# image = bytes(list(chain.from_iterable([x] * 31 + [0] for x in range(16))) * height)
+    print(color0[:64])
 
-colors = [
-    [0x00] * 64 * height,
-    [0x00] * 64 * height,
-    [0x00] * 64 * height,
-    [0x00] * 64 * height
-]
+    # for chunk in range(0, 64 * height, 64 * chunk_size):
+    #     for index, color_code in enumerate(range(49, 53)):
+    #         chunk_height = len(colors[index][chunk:chunk + 64 * chunk_size]) // 64
+    #         data = bytes([
+    #             0x1d, 0x38, 0x4c,
 
+    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 0)  & 0xff,
+    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 8)  & 0xff,
+    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 16) & 0xff,
+    #             (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 24) & 0xff,
 
-color0 = [0x00] * 64 * height
-color1 = [0x00] * 64 * height
-color2 = [0x00] * 64 * height
-color3 = [0x00] * 64 * height
+    #             0x30, 0x70,
 
-for index, pixel in enumerate(image):
-    if not pixel:
-        continue
+    #             52, # Multi-tone
+    #             1, 1, # No scaling
 
-    x = index % width
-    y = index // width
+    #             color_code,
 
-    if pixel & 0b1000:
-        color0[64 * y + x // 8] |= 1 << (7 - index % 8)
+    #             (width >> 0) & 0xff, (width >> 8) & 0xff,
+    #             (chunk_height >> 0) & 0xff, (chunk_height >> 8) & 0xff,
+    #         ]) + bytes(colors[index][chunk:chunk + 64 * chunk_size])
 
-    if pixel & 0b0100:
-        color1[64 * y + x // 8] |= 1 << (7 - index % 8)
+    #         output += data
 
-    if pixel & 0b0010:
-        color2[64 * y + x // 8] |= 1 << (7 - index % 8)
+    #     output += bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2]) # Print stored data
 
-    if pixel & 0b0001:
-        color3[64 * y + x // 8] |= 1 << (7 - index % 8)
+    output += bytes([0x1d, 0x56, 65, 0]) # Feed and cut
 
-    # colors[plane][64 * y + x // 8] |= 1 << (7 - index % 8)
+    with open(output_file, 'wb') as file:
+        file.write(output)
+
+    assert(open('reference.bin', 'rb').read() == output)
 
 
-colors = [color0, color1, color2, color3]
-# colors = list(reversed(colors))
-# colors = [bytes(x) for x in colors]
-
-for i in range(4):
-    print(colors[i][:64])
-
-# c = socket.create_connection((sys.argv[1], 9100))
-
-# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1])) # Single head energizing
-# c.sendall(bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1])) # Lowest speed
-
-def chunks(lst, n):
-    for i in range(0, len(lst), n):
-        yield lst[i:i + n]
-
-
-previous_chunk = 0
-# for chunk in range(415 * 64, 64 * height, 415 * 64):
-chunk_size = 415
-chunk_size = 256
-chunk_size = 100
-for chunk in range(0, 64 * height, 64 * chunk_size):
-    print(chunk // 64, min(height, (chunk + 64 * chunk_size) // 64))
-    for index, color_code in enumerate(range(49, 53)):
-        chunk_height = len(colors[index][chunk:chunk + 64 * chunk_size]) // 64
-        data = bytes([
-            0x1d, 0x38, 0x4c,
-
-            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 0)  & 0xff,
-            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 8)  & 0xff,
-            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 16) & 0xff,
-            (10 + len(colors[index][chunk:chunk + 64 * chunk_size]) >> 24) & 0xff,
-
-            0x30, 0x70,
-
-            52, # Multi-tone
-            1, 1, # No scaling
-
-            color_code,
-
-            (width >> 0) & 0xff, (width >> 8) & 0xff,
-            (chunk_height >> 0) & 0xff, (chunk_height >> 8) & 0xff,
-        ]) + bytes(colors[index][chunk:chunk + 64 * chunk_size])
-
-        logline = ' '.join('{:02x}'.format(x) for x in data[:24])
-        print('d: ', logline[:50], Style.DIM, end='', sep='')
-        print(logline[50:], Style.RESET_ALL)
-#         c.sendall(data)
-
-#     c.sendall(bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2])) # Print stored data
-
-# c.sendall(bytes([0x1d, 0x56, 65, 0])) # Feed and cut
-
-# c.close()
+if __name__ == '__main__':
+    main()
