@@ -4,6 +4,7 @@ Some of the Epson thermal receipt printers support "multi-tone" printing, which 
 
 This is achieved by using the [GS 8 L](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lparen_cl.html)-command ([function 112](https://download4.epson.biz/sec_pubs/pos/reference_en/escpos/gs_lparen_cl_fn112.html)) to specify 4-bit raster data in a [planar](https://en.wikipedia.org/wiki/Planar_%28computer_graphics%29) fashion.
 
+![Illustration of 4-bit packed image data being transformed into 4 different bitplanes](packed-to-planar.svg)
 
 ## Disadvantages of multi-tone prints
 

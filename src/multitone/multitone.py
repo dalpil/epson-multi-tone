@@ -9,137 +9,22 @@ from PIL import Image, ImageOps, ImageEnhance
 logging.basicConfig(level=logging.WARNING)
 logging.getLogger('PIL').setLevel(logging.WARNING)
 
-DITHER_KERNELS = {
-    'atkinson': (
-        (1, 0, 1 / 8),
-        (2, 0, 1 / 8),
-        (-1, 1, 1 / 8),
-        (0, 1, 1 / 8),
-        (1, 1, 1 / 8),
-        (0, 2, 1 / 8),
-    ),
+DITHER_KERNEL = (
+    (1, 0, 0.5423),
+    (2, 0, 0.0533),
 
-    'floyd-steinberg': (
-        (1, 0, 7 / 16),
-        (-1, 1, 3 / 16),
-        (0, 1, 5 / 16),
-        (1, 1, 1 / 16),
-    ),
+    (-2, 1, 0.0246),
+    (-1, 1, 0.2191),
+    (0, 1, 0.4715),
+    (1, 1, -0.0023),
+    (2, 1, -0.1241),
 
-    'jarvis-judice-ninke': (
-        (1, 0, 7 / 48),
-        (2, 0, 5 / 48),
-        (-2, 1, 3 / 48),
-        (-1, 1, 5 / 48),
-        (0, 1, 7 / 48),
-        (1, 1, 5 / 48),
-        (2, 1, 3 / 48),
-        (-2, 2, 1 / 48),
-        (-1, 2, 3 / 48),
-        (0, 2, 5 / 48),
-        (1, 2, 3 / 48),
-        (2, 2, 1 / 48),
-    ),
-
-    'stucki': (
-        (1, 0, 8 / 42),
-        (2, 0, 4 / 42),
-        (-2, 1, 2 / 42),
-        (-1, 1, 4 / 42),
-        (0, 1, 8 / 42),
-        (1, 1, 4 / 42),
-        (2, 1, 2 / 42),
-        (-2, 2, 1 / 42),
-        (-1, 2, 2 / 42),
-        (0, 2, 4 / 42),
-        (1, 2, 2 / 42),
-        (2, 2, 1 / 42),
-    ),
-
-    'burkes': (
-        (1, 0, 8 / 32),
-        (2, 0, 4 / 32),
-        (-2, 1, 2 / 32),
-        (-1, 1, 4 / 32),
-        (0, 1, 8 / 32),
-        (1, 1, 4 / 32),
-        (2, 1, 2 / 32),
-    ),
-
-    'sierra3': (
-        (1, 0, 5 / 32),
-        (2, 0, 3 / 32),
-        (-2, 1, 2 / 32),
-        (-1, 1, 4 / 32),
-        (0, 1, 5 / 32),
-        (1, 1, 4 / 32),
-        (2, 1, 2 / 32),
-        (-1, 2, 2 / 32),
-        (0, 2, 3 / 32),
-        (1, 2, 2 / 32),
-    ),
-
-    'sierra2': (
-        (1, 0, 4 / 16),
-        (2, 0, 3 / 16),
-        (-2, 1, 1 / 16),
-        (-1, 1, 2 / 16),
-        (0, 1, 3 / 16),
-        (1, 1, 2 / 16),
-        (2, 1, 1 / 16),
-    ),
-
-    'sierra-lite': (
-        (1, 0, 2 / 4),
-        (-1, 1, 1 / 4),
-        (0, 1, 1 / 4),
-    ),
-
-    # https://doi.org/10.1117/12.271597
-    'wong-allebach': (
-        (1, 0, 0.2911),
-
-        (-1, 1, 0.1373),
-        (0, 1, 0.3457),
-        (1, 1, 0.2258)
-    ),
-
-    # https://doi.org/10.1117/12.2180540
-    'fedoseev': (
-        (1, 0, 0.5423),
-        (2, 0, 0.0533),
-
-        (-2, 1, 0.0246),
-        (-1, 1, 0.2191),
-        (0, 1, 0.4715),
-        (1, 1, -0.0023),
-        (2, 1, -0.1241),
-
-        (-2, 2, -0.0065),
-        (-1, 2, -0.0692),
-        (0, 2, 0.0168),
-        (1, 2, -0.0952),
-        (2, 2, -0.0304),
-    ),
-
-    'fedoseev2': (
-        (1, 0, 0.4364),
-        (0, 1, 0.5636),
-    ),
-
-    'fedoseev3': (
-        (1, 0, 0.4473),
-        (-1, 1, 0.1654),
-        (0, 1, 0.3872),
-    ),
-
-    'fedoseev4': (
-        (1, 0, 0.5221),
-        (-1, 1, 0.1854),
-        (0, 1, 0.4689),
-        (1, 2, -0.1763),
-    ),
-}
+    (-2, 2, -0.0065),
+    (-1, 2, -0.0692),
+    (0, 2, 0.0168),
+    (1, 2, -0.0952),
+    (2, 2, -0.0304),
+)
 
 palette = [0, 36, 72, 109, 145, 182, 218, 255]
 
@@ -153,7 +38,7 @@ lut = [
     7,  # 6
     8,  # 7
     8,  # 8
-    9, # 9
+    9,  # 9
     10, # 10
     11, # 11
     12, # 12
@@ -202,7 +87,7 @@ def dither(original, diff_map, serpentine, palette):
     return output
 
 
-@click.command()
+@click.command(context_settings={'show_default': True})
 @click.option('--output-file', type=click.Path(), required=True, help="The binary file to send to the Epson printer")
 @click.option('--output-image', type=click.Path())
 @click.option('--num-lines', default=100, help='Should be less than half of 415')
@@ -226,7 +111,7 @@ def main(image, output_file, output_image, num_lines, sharpen):
     for x in palette:
         numba_palette.append(x)
 
-    image = dither(np.array(image), DITHER_KERNELS['fedoseev'], True, numba_palette)
+    image = dither(np.array(image), DITHER_KERNEL, True, numba_palette)
     image = Image.fromarray(np.uint8(image), "L")
 
     if output_image:
@@ -250,7 +135,6 @@ def main(image, output_file, output_image, num_lines, sharpen):
                 if pixel & (0b1000 >> color_index):
                     bitplane[64 * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
 
-            assert(width * num_lines // 8 == len(bitplane))
             data = bytes([
                 0x1d, 0x38, 0x4c,
 
@@ -278,8 +162,6 @@ def main(image, output_file, output_image, num_lines, sharpen):
 
     with open(output_file, 'wb') as file:
         file.write(output)
-
-    assert(open('reference.bin', 'rb').read() == output)
 
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "epson-multi-tone-thermal"
+name = "multitone"
 version = "0.1.0"
 description = ""
 authors = ["Your Name <you@example.com>"]
@@ -13,6 +13,8 @@ colorama = "^0.4.6"
 numba = "^0.58.1"
 click = "^8.1.7"
 
+[tool.poetry.scripts]
+epson = 'multitone.multitone:main'
 
 [build-system]
 requires = ["poetry-core"]
