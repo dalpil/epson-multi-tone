@@ -86,6 +86,8 @@ def dither(original, diff_map, serpentine, palette):
 
     return output
 
+def nbytes(bits):
+    return (bits + 8 - 1) // 8
 
 @click.command(context_settings={'show_default': True})
 @click.option('--output-file', type=click.Path(), required=True, help="The binary file to send to the Epson printer")
@@ -101,10 +103,12 @@ def main(image, output_file, output_image, num_lines, sharpen):
         image = image.resize((int(image.width * ratio), int(image.height * ratio)))
 
     image = image.convert('L')
+
     image = ImageEnhance.Sharpness(image)
     image = image.enhance(sharpen)
 
     width = image.width
+    width_nbytes = nbytes(width)
     height = image.height
 
     numba_palette = numba.typed.List()
@@ -126,14 +130,14 @@ def main(image, output_file, output_image, num_lines, sharpen):
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1]) # Single head energizing
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1]) # Lowest speed
 
-    for chunk_num, chunk in enumerate(range(0, 64 * height, 64 * num_lines)):
+    for chunk_num, chunk in enumerate(range(0, width_nbytes * height, width_nbytes * num_lines)):
         for color_index, color_code in enumerate(range(49, 53)):
-            bitplane = [0x00] * 64 * num_lines
+            bitplane = [0x00] * width_nbytes * num_lines
             image_offset = chunk_num * (width * num_lines)
 
             for index, pixel in enumerate(image[image_offset:image_offset + width * num_lines]):
                 if pixel & (0b1000 >> color_index):
-                    bitplane[64 * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
+                    bitplane[width_nbytes * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
 
             data = bytes([
                 0x1d, 0x38, 0x4c,
