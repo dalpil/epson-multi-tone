@@ -1,20 +1,19 @@
 [tool.poetry]
-name = "multitone"
+name = "epson-multi-tone"
 version = "0.1.0"
-description = ""
-authors = ["Your Name <you@example.com>"]
+description = "Multi-tone printing on TM-T88V, TM-T88VI, TM-T88VI and other thermal receipt printers from Epson"
+authors = ["Dalpil"]
 readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
 Pillow = "^10.1.0"
 numpy = "^1.26.2"
-colorama = "^0.4.6"
 numba = "^0.58.1"
 click = "^8.1.7"
 
 [tool.poetry.scripts]
-epson = 'multitone.multitone:main'
+epson = 'epson_multi_tone.multitone:main'
 
 [build-system]
 requires = ["poetry-core"]
