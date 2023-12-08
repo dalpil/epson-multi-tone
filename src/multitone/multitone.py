@@ -33,7 +33,7 @@ def dither(original, diff_map, serpentine, palette):
                 xn, yn = x + dx, y + dy
 
                 if (0 <= xn < width) and (0 <= yn < height):
-                    input[yn, xn] = input[yn, xn] + round(quantization_error * diffusion_coefficient)
+                    input[yn, xn] = max(0, min(255, input[yn, xn] + round(quantization_error * diffusion_coefficient)))
 
         if serpentine:
             direction *= -1
