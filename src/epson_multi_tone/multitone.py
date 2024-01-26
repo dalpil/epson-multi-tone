@@ -45,13 +45,18 @@ def dither(original, diff_map, serpentine, palette):
 @click.option('--output-file', type=click.Path(), required=True, help="The binary file to send to the Epson printer")
 @click.option('--output-image', type=click.Path())
 @click.option('--num-lines', default=100, help='Should be less than half of 415')
+@click.option('--resize', type=int)
 @click.option('--sharpen', default=2.0)
 @click.argument('image', type=click.File(mode='rb'))
-def main(image, output_file, output_image, num_lines, sharpen):
+def main(image, output_file, output_image, num_lines, resize, sharpen):
     image = Image.open(image)
 
     if image.width > 512:
         ratio = 512 / image.width
+        image = image.resize((int(image.width * ratio), int(image.height * ratio)))
+
+    if resize:
+        ratio = resize / image.width
         image = image.resize((int(image.width * ratio), int(image.height * ratio)))
 
     image = image.convert('L')
