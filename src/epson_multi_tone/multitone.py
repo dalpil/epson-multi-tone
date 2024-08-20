@@ -1,13 +1,7 @@
-import logging
-
 import click
 import numpy as np
 import numba
 from PIL import Image, ImageOps, ImageEnhance
-
-
-logging.basicConfig(level=logging.WARNING)
-logging.getLogger('PIL').setLevel(logging.WARNING)
 
 
 @numba.njit
@@ -20,6 +14,11 @@ def dither(original, diff_map, serpentine, palette):
 
     for y in range(height):
         for x in range(0, width, direction) if direction > 0 else range(width - 1, -1, direction):
+            # Do not dither black or white
+            if original[y, x] == 0 or original[y, x] == 255:
+                output[y, x] = original[y, x]
+                continue 
+
             old_pixel = input[y, x]
             new_pixel = palette[np.argmin(np.abs(palette - old_pixel))]
             quantization_error = old_pixel - new_pixel
@@ -46,26 +45,37 @@ def dither(original, diff_map, serpentine, palette):
 @click.option('--output-image', type=click.Path())
 @click.option('--num-lines', default=100, help='Should be less than half of 415')
 @click.option('--resize', type=int)
-@click.option('--sharpen', default=2.0)
+@click.option('--sharpness', default=2.0, help='Sharpening the image usually leads to a better result when printed')
+@click.option('--contrast', default=1.2, help='Increasing the contrast might make the print look better, try 1.2 for example')
+@click.option('--cut/--no-cut', default=False)
+@click.option('--speed', default=1, help='The slowest possible speed is recommended')
+@click.option('--heads-energizing', default=1, help='Single-head energizing is highly recommended')
 @click.argument('image', type=click.File(mode='rb'))
-def main(image, output_file, output_image, num_lines, resize, sharpen):
+def main(image, output_file, output_image, num_lines, resize, sharpness, contrast, cut, speed, heads_energizing):
     image = Image.open(image)
 
-    if image.width > 512:
-        ratio = 512 / image.width
-        image = image.resize((int(image.width * ratio), int(image.height * ratio)))
+    # This makes sure that transparency in images becomes white instead of black
+    if image.mode == 'RGBA':
+        white_background = Image.new('RGBA', image.size, 'WHITE')
+        white_background.paste(image, mask=image)
+        image = white_background
 
-    if resize:
-        ratio = resize / image.width
-        image = image.resize((int(image.width * ratio), int(image.height * ratio)))
-
-    image = image.convert('L')
-    image = ImageEnhance.Sharpness(image)
-    image = image.enhance(sharpen)
-
+    # Resize the image if requested by the user, or if the image is wider than 512 pixels
+    if resize or image.width > 512:
+        ratio = resize or 512 / image.width
+        image = image.resize((round(image.width * ratio), round(image.height * ratio)))
+    
     width = image.width
     width_nbytes = (width + 8 - 1) // 8
     height = image.height
+
+    # Apply image adjustments
+    image = image.convert('L')
+    image = ImageEnhance.Sharpness(image)
+    image = image.enhance(sharpness)
+
+    image = ImageEnhance.Contrast(image)
+    image = image.enhance(contrast)
 
     dither_kernel = (
         (1, 0, 0.5423),
@@ -83,22 +93,39 @@ def main(image, output_file, output_image, num_lines, resize, sharpen):
         (1, 2, -0.0952),
         (2, 2, -0.0304),
     )
-    palette = [0, 36, 72, 109, 145, 182, 218, 255]
+
+    # This palette and LUT was selected by printing a calibration sheet with
+    # each of the 16 "colors". I then scanned the receipt and measured the 
+    # average color of each calibration square, giving me a percentage between
+    # full black and full white. This percentage was then mapped to values
+    # between 0 and 255.
+    palette = [0, 9, 45, 54, 98, 107, 157, 210, 242, 251, 255]
+    lut = {
+        0: 15,
+        9: 13,
+        45: 12,
+        54: 11,
+        98: 10,
+        107: 9,
+        157: 8,
+        210: 7,
+        242: 6,
+        251: 5,
+        255: 4
+    }
+
     image = dither(np.array(image), dither_kernel, True, np.array(palette))
     image = Image.fromarray(np.uint8(image), "L")
 
     if output_image:
         image.save(output_image)
 
-    image = ImageOps.invert(image)
-
-    # Apply LUT transformation to map pixel values to levels that the printer can reproduce on paper.
-    lut = [4, 5, 6, 6, 7, 7, 7, 8, 8, 9, 10, 11, 12, 13, 14, 15]
-    image = [lut[p // 17] for p in image.tobytes()]
+    # Apply LUT
+    image = [lut[p] for p in image.tobytes()]
 
     output = b''
-    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, 1]) # Single head energizing
-    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, 1]) # Lowest speed
+    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, heads_energizing]) # Single head energizing
+    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, speed]) # Lowest speed
 
     for chunk_num in range(height // num_lines + 1):
         for color_index, color_code in enumerate(range(49, 53)):
@@ -132,7 +159,8 @@ def main(image, output_file, output_image, num_lines, resize, sharpen):
 
         output += bytes([0x1d, 0x28, 0x4c, 0x02, 0x00, 0x30, 2]) # Print stored data
 
-    output += bytes([0x1d, 0x56, 65, 0]) # Feed and cut
+    if cut:
+        output += bytes([0x1d, 0x56, 65, 0]) # Feed and cut
 
     with open(output_file, 'wb') as file:
         file.write(output)

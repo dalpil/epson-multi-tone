@@ -7,9 +7,9 @@ readme = "README.md"
 
 [tool.poetry.dependencies]
 python = "^3.10"
-Pillow = "^10.1.0"
-numpy = "^1.26.2"
-numba = "^0.58.1"
+Pillow = "^10.4.0"
+numpy = "^1.26.4"
+numba = "^0.60.0"
 click = "^8.1.7"
 
 [tool.poetry.scripts]
