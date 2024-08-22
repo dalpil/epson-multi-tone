@@ -62,7 +62,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
 
     # Resize the image if requested by the user, or if the image is wider than 512 pixels
     if resize or image.width > 512:
-        ratio = resize or 512 / image.width
+        ratio = (resize or 512) / image.width
         image = image.resize((round(image.width * ratio), round(image.height * ratio)))
     
     width = image.width
@@ -124,8 +124,8 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
     image = [lut[p] for p in image.tobytes()]
 
     output = b''
-    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, heads_energizing]) # Single head energizing
-    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, speed]) # Lowest speed
+    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, heads_energizing])
+    output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, speed])
 
     # Large images needs to be sent to the printer in smaller slices to avoid banding while 
     # printing. The height of these slices should preferably be less than half of 415 according
@@ -145,14 +145,14 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
                     bitplane[width_nbytes * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
 
             data = bytes([
-                0x1d, 0x38, 0x4c,
+                0x1d, 0x38, 0x4c, # GS 8 L 
 
                 (10 + len(bitplane) >> 0)  & 0xff,
                 (10 + len(bitplane) >> 8)  & 0xff,
                 (10 + len(bitplane) >> 16) & 0xff,
                 (10 + len(bitplane) >> 24) & 0xff,
 
-                0x30, 0x70,
+                0x30, 0x70, # Function 112
 
                 52, # Multi-tone
                 1, 1, # No scaling
