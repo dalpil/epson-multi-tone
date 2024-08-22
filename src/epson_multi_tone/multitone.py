@@ -1,7 +1,7 @@
 import click
 import numpy as np
 import numba
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image, ImageEnhance
 
 
 @numba.njit
@@ -127,12 +127,20 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, heads_energizing]) # Single head energizing
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, speed]) # Lowest speed
 
-    for chunk_num in range(height // num_lines + 1):
-        for color_index, color_code in enumerate(range(49, 53)):
-            bitplane = [0x00] * width_nbytes * num_lines
-            image_offset = chunk_num * (width * num_lines)
+    # Large images needs to be sent to the printer in smaller slices to avoid banding while 
+    # printing. The height of these slices should preferably be less than half of 415 according
+    # to Epson. Maximum slice height will vary depending on the transport layer.
+    for slice_y_start in range(0, height, num_lines):
+        slice_y_end = min(slice_y_start + num_lines, height)
+        slice_height = slice_y_end - slice_y_start
 
-            for index, pixel in enumerate(image[image_offset:image_offset + width * num_lines]):
+        slice = image[width * slice_y_start :
+                      width * slice_y_end]
+        
+        for color_index, color_code in enumerate(range(49, 53)):
+            bitplane = [0x00] * width_nbytes * slice_height
+
+            for index, pixel in enumerate(slice):
                 if pixel & (0b1000 >> color_index):
                     bitplane[width_nbytes * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
 
@@ -152,7 +160,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
                 color_code,
 
                 (width >> 0) & 0xff, (width >> 8) & 0xff,
-                (num_lines >> 0) & 0xff, (num_lines >> 8) & 0xff,
+                (slice_height >> 0) & 0xff, (slice_height >> 8) & 0xff,
             ]) + bytes(bitplane)
 
             output += data
