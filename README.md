@@ -28,9 +28,9 @@ It should be noted that you can adjust the "print density" for both monochrome p
 
 # Bi-level vs multi-tone example prints
 
-Here's an example of a bilevel (1-bit) print to the left, and a multi-tone (4-bit) print to the right. **Make sure to click the image to view it in a separate tab to fully appreciate the difference.**
+Here's an example of a bilevel (1-bit) print to the left, and a multi-tone (4-bit) print to the right.
 
-![](assets/1bit-vs-4bit-printed.jpg)
+![](assets/bilinear-vs-multitone-printed.png)
 
 # Disadvantages of multi-tone prints
 
@@ -60,3 +60,44 @@ These are the printers that seem to support 4-bit graphics via the **GS 8 L**-co
 ```
 
 See `epson --help` for a full list of available parameters.
+
+# Usage with other libraries and/or languages
+
+The output-file contains raw ESCPOS-commands which can be sent to your printer from any library or language, as long as there's a method that let you pass raw data to the printer.
+
+## escpos-php example
+
+```php
+<?php
+require __DIR__ . '/vendor/autoload.php';
+use Mike42\Escpos\PrintConnectors\NetworkPrintConnector;
+use Mike42\Escpos\Printer;
+
+$connector = new NetworkPrintConnector("printer.example.com", 9100);
+$printer = new Printer($connector);
+
+try {
+        $multitone_image = file_get_contents("multitone-image.bin");
+        $printer->getPrintConnector()->write($multitone_image);
+        $printer->cut();
+
+} finally {
+        $printer -> close();
+}
+?>
+```
+
+
+## python-escpos
+
+```python
+from escpos import printer
+
+p = printer.Serial()
+
+with open("multitone-image.bin", "rb") as file:
+    data = file.read()
+
+p._raw(data)
+p.cut()
+```
