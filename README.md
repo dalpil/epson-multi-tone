@@ -52,10 +52,7 @@ These are the printers that seem to support 4-bit graphics via the **GS 8 L**-co
 # Installation / usage instructions
 
 ```
-    poetry shell
-    poetry install
-
-    epson --output-image preview.png --output-file output.bin <INPUT_IMAGE>
+    uv run epson --output-image preview.png --output-file output.bin <INPUT_IMAGE>
     nc <PRINTER_IP> 9100 < output.bin
 ```
 
