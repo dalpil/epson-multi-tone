@@ -94,12 +94,10 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
         (2, 2, -0.0304),
     )
 
-    # This palette and LUT was selected by printing a calibration sheet with
-    # each of the 16 "colors". I then scanned the receipt and measured the 
-    # average color of each calibration square, giving me a percentage between
-    # full black and full white. This percentage was then mapped to values
-    # between 0 and 255.
-    palette = [0, 9, 45, 54, 98, 107, 157, 210, 242, 251, 255]
+    # This LUT was selected by printing a calibration sheet with each of the 16
+    # "colors". I then scanned the receipt and measured the average color of
+    # each calibration square, giving me a percentage between full black and
+    # full white. This percentage was then mapped to values between 0 and 255.
     lut = {
         0: 15,
         9: 13,
@@ -114,7 +112,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
         255: 4
     }
 
-    image = dither(np.array(image), dither_kernel, True, np.array(palette))
+    image = dither(np.array(image), dither_kernel, True, np.array(list(lut.keys()), dtype=np.uint8))
     image = Image.fromarray(np.uint8(image), "L")
 
     if output_image:
