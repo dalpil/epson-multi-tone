@@ -44,10 +44,26 @@ See [Guide to thermal paper](https://www.anixter.com/content/dam/Suppliers/Broth
 
 These are the printers that seem to support 4-bit graphics via the **GS 8 L**-command, please send me a pull request if I have missed any:
 
-- TM-T70II
-- TM-T88V
-- TM-T88VI
-- TM-T88VII
+- EU-m30, 203 dpi
+- TM-L90 (with rocker power switch), 203 dpi
+- TM-L90 LFC (65* models), 203 dpi
+- TM-m10, 203 dpi
+- TM-m30, 203 dpi
+- TM-m30II, 203 dpi
+- TM-m30II-H, 203 dpi
+- TM-m30II-NT, 203 dpi
+- TM-m30II-S, 203 dpi
+- TM-m30II-SL, 203 dpi
+- TM-m30III, 203 dpi
+- TM-m30III-H, 203 dpi
+- TM-m50, 180 dpi
+- TM-m50II, 180 dpi
+- TM-m50II-H, 180 dpi
+- TM-T70II, 180 dpi
+- TM-T88V, 180 dpi
+- TM-T88VI, 180 dpi
+- TM-T88VII, 180 dpi
+
 
 # Installation / usage instructions
 
