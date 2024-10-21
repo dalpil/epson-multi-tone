@@ -1,10 +1,20 @@
+import logging
+import logging.config
+import time
+
 import click
 import numpy as np
-import numba
+
+try:
+    import numba
+except ImportError:
+    _has_numba = False
+else:
+    _has_numba = True
+
 from PIL import Image, ImageEnhance
 
 
-@numba.njit
 def dither(original, diff_map, serpentine, palette):
     input = original.copy()
     output = np.zeros_like(input)
@@ -39,9 +49,12 @@ def dither(original, diff_map, serpentine, palette):
 
     return output
 
+if _has_numba:
+    dither = numba.njit(dither)
+
 
 @click.command(context_settings={'show_default': True})
-@click.option('--output-file', type=click.Path(), required=True, help="The binary file to send to the Epson printer")
+@click.option('--output-file', type=click.Path(), required=True, help='The binary file to send to the Epson printer')
 @click.option('--output-image', type=click.Path())
 @click.option('--num-lines', default=100, help='Should be less than half of 415')
 @click.option('--resize', type=int)
@@ -50,12 +63,20 @@ def dither(original, diff_map, serpentine, palette):
 @click.option('--cut/--no-cut', default=False)
 @click.option('--speed', default=1, help='The slowest possible speed is recommended')
 @click.option('--heads-energizing', default=1, help='Single-head energizing is highly recommended')
+@click.option('--loglevel', default='INFO', type=click.Choice(['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], case_sensitive=False))
 @click.argument('image', type=click.File(mode='rb'))
-def main(image, output_file, output_image, num_lines, resize, sharpness, contrast, cut, speed, heads_energizing):
+def main(image, output_file, output_image, num_lines, resize, sharpness, contrast, cut, speed, heads_energizing, loglevel):
+    logging.basicConfig(level=loglevel, format='[%(asctime)s] %(levelname)s: %(message)s')
+    logging.getLogger('numba').setLevel('CRITICAL')
+    logging.getLogger('PIL').setLevel('CRITICAL')
+
+    log = logging.getLogger(__name__)
+
+    log.debug(f'Opening image "{image.name}"')
     image = Image.open(image)
 
-    # This makes sure that transparency in images becomes white instead of black
     if image.mode == 'RGBA':
+        log.debug('Input image has transparency channel, setting all transparent pixels to white')
         white_background = Image.new('RGBA', image.size, 'WHITE')
         white_background.paste(image, mask=image)
         image = white_background
@@ -64,18 +85,23 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
     if resize or image.width > 512:
         ratio = (resize or 512) / image.width
         image = image.resize((round(image.width * ratio), round(image.height * ratio)))
-    
+        log.debug(f'Resized image to {image.width}x{image.height}')
+
     width = image.width
     width_nbytes = (width + 8 - 1) // 8
     height = image.height
 
     # Apply image adjustments
     image = image.convert('L')
-    image = ImageEnhance.Sharpness(image)
-    image = image.enhance(sharpness)
+    if sharpness:
+        image = ImageEnhance.Sharpness(image)
+        image = image.enhance(sharpness)
+        log.debug(f'Modified sharpness of image with factor {sharpness}')
 
-    image = ImageEnhance.Contrast(image)
-    image = image.enhance(contrast)
+    if contrast:
+        image = ImageEnhance.Contrast(image)
+        image = image.enhance(contrast)
+        log.debug(f'Modified contrast of image image with factor {contrast}')
 
     dither_kernel = (
         (1, 0, 0.5423),
@@ -112,13 +138,22 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
         255: 4
     }
 
-    image = dither(np.array(image), dither_kernel, True, np.array(list(lut.keys())))
-    image = Image.fromarray(np.uint8(image), "L")
+    if _has_numba:
+        log.debug('Dithering input image with JIT')
+    else:
+        log.debug('Dithering input image without JIT, this might take a while...')
+
+    time_dither_start = time.time()
+    image = dither(np.array(image, dtype=np.int16), dither_kernel, True, np.array(list(lut.keys())))
+    image = Image.fromarray(np.uint8(image), 'L')
+    log.debug(f'Dithering finished, took {time.time() - time_dither_start} seconds')
 
     if output_image:
         image.save(output_image)
+        log.debug(f'Wrote output image to {output_image}')
 
     # Apply LUT
+    log.debug('Applying LUT to image')
     image = [lut[p] for p in image.tobytes()]
 
     output = b''
@@ -170,6 +205,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
 
     with open(output_file, 'wb') as file:
         file.write(output)
+        log.debug(f'Wrote output binary file to {output_file}')
 
 
 if __name__ == '__main__':

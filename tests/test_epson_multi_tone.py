@@ -32,4 +32,4 @@ def test_epson_multi_tone(tmp_path):
         runner.invoke(main, [image_path, f'--output-image={output_image_path}', f'--output-file={output_path}', '--sharpness=0.0', '--contrast=0.0'])
 
         with open(output_path, 'rb') as output:
-            assert sha1(output.read()).hexdigest() == 'f4b7d16d8ea5967a32f7369054c3772bfc6b2754'
+            assert sha1(output.read()).hexdigest() == 'd0f60a317310e7bafe187ab9f7143ddb61559171'

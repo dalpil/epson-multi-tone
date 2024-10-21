@@ -68,7 +68,18 @@ These are the printers that seem to support 4-bit graphics via the **GS 8 L**-co
 # Installation / usage instructions
 
 ```
+    # Clone repo
+    git clone https://github.com/dalpil/epson-multi-tone.git
+    cd epson-multi-tone
+
+    # With JIT-compiled dithering, highly recommended as it runs at least 10x faster than plain Python
+    uv sync --extra numba
     uv run epson --output-image preview.png --output-file output.bin <INPUT_IMAGE>
+
+    # Without JIT-compiled dithering
+    uv run epson --output-image preview.png --output-file output.bin <INPUT_IMAGE>
+
+    # Send ESC/POS commands to printer
     nc <PRINTER_IP> 9100 < output.bin
 ```
 
