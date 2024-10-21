@@ -112,7 +112,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
         255: 4
     }
 
-    image = dither(np.array(image), dither_kernel, True, np.array(list(lut.keys()), dtype=np.uint8))
+    image = dither(np.array(image), dither_kernel, True, np.array(list(lut.keys())))
     image = Image.fromarray(np.uint8(image), "L")
 
     if output_image:
