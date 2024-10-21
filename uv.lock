@@ -42,8 +42,8 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.1.7" },
-    { name = "numba" },
-    { name = "numpy" },
+    { name = "numba", specifier = "==0.60.0" },
+    { name = "numpy", specifier = "==2.0.2" },
     { name = "pillow", specifier = ">=10.4.0" },
 ]
 

@@ -7,8 +7,8 @@ readme = "README.md"
 requires-python = ">=3.10, <3.13"
 dependencies = [
     "click>=8.1.7",
-    "numba",
-    "numpy",
+    "numba==0.60.0",
+    "numpy==2.0.2",
     "pillow>=10.4.0",
 ]
 
