@@ -4,7 +4,7 @@ version = "0.1.0"
 description = "Multi-tone printing on TM-T88V, TM-T88VI, TM-T88VI and other thermal receipt printers from Epson"
 author = "dalpil"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.10, <3.13"
 dependencies = [
     "click>=8.1.7",
     "numba",
