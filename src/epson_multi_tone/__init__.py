@@ -85,7 +85,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
     if resize or image.width > 512:
         ratio = (resize or 512) / image.width
         image = image.resize((round(image.width * ratio), round(image.height * ratio)))
-        log.debug(f'Resized image to {image.width}x{image.height}')
+        log.info(f'Resized image to {image.width}x{image.height}')
 
     width = image.width
     width_nbytes = (width + 8 - 1) // 8
@@ -96,12 +96,12 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
     if sharpness:
         image = ImageEnhance.Sharpness(image)
         image = image.enhance(sharpness)
-        log.debug(f'Modified sharpness of image with factor {sharpness}')
+        log.info(f'Modified sharpness of image with factor {sharpness}')
 
     if contrast:
         image = ImageEnhance.Contrast(image)
         image = image.enhance(contrast)
-        log.debug(f'Modified contrast of image image with factor {contrast}')
+        log.info(f'Modified contrast of image image with factor {contrast}')
 
     dither_kernel = (
         (1, 0, 0.5423),
@@ -139,9 +139,9 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
     }
 
     if _has_numba:
-        log.debug('Dithering input image with JIT')
+        log.info('Dithering input image with JIT')
     else:
-        log.debug('Dithering input image without JIT, this might take a while...')
+        log.info('Dithering input image without JIT, this might take a while...')
 
     time_dither_start = time.time()
     image = dither(np.array(image, dtype=np.int16), dither_kernel, True, np.array(list(lut.keys())))
@@ -150,12 +150,13 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
 
     if output_image:
         image.save(output_image)
-        log.debug(f'Wrote output image to {output_image}')
+        log.info(f'Wrote output image to {output_image}')
 
     # Apply LUT
     log.debug('Applying LUT to image')
     image = [lut[p] for p in image.tobytes()]
 
+    log.debug('Generating ESC/POS commands')
     output = b''
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x61, heads_energizing])
     output += bytes([0x1d, 0x28, 0x4b, 0x02, 0x00, 0x32, speed])
@@ -205,7 +206,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
 
     with open(output_file, 'wb') as file:
         file.write(output)
-        log.debug(f'Wrote output binary file to {output_file}')
+        log.info(f'Wrote output binary file to {output_file}')
 
 
 if __name__ == '__main__':
