@@ -176,7 +176,7 @@ def main(image, output_file, output_image, num_lines, resize, sharpness, contras
 
             for index, pixel in enumerate(slice):
                 if pixel & (0b1000 >> color_index):
-                    bitplane[width_nbytes * (index // width) + (index % width) // 8] |= 1 << (7 - index % 8)
+                    bitplane[width_nbytes * (index // width) + (index % width) // 8] |= 1 << (7 - (index % width) % 8)
 
             data = bytes([
                 0x1d, 0x38, 0x4c, # GS 8 L 
